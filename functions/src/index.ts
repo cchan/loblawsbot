@@ -46,32 +46,25 @@ app.intent('Location', agent => {
 
 app.intent('LocationGranted', (agent, params, granted) => {
   if (granted && agent.device.location) {
-    const coords = `${agent.device.location.coordinates.latitude},${agent.device.location.coordinates.longitude}`;
-    return gMaps.findPlace({
-      input: 'loblaws',
-      inputtype: 'textquery',
-      locationbias: 'point:' + coords,
-      fields: 'place_id',
+    const origincoords = agent.device.location.coordinates.latitude + ',' + agent.device.location.coordinates.longitude;
+    return gMaps.directions({
+      origin: origincoords,
+      destination: '\"Loblaws\"', // 'place_id:' + res.json.candidates[0].place_id
+      mode: 'driving',
     }).asPromise()
     .then(res => {
-      // Choose if res.json.candidates.length > 1
-      return gMaps.directions({
-        origin: coords,
-        destination: 'loblaws' // 'place_id:' + res.json.candidates[0].place_id
-      }).asPromise();
-    })
-    .then(res => {
-      agent.ask(`Summary of directions to Loblaws: ` + JSON.stringify(res.json.routes[0].summary));
+      const destcoords = res.json.routes[0].legs[0].end_location.lat + ',' + res.json.routes[0].legs[0].end_location.lng;
+      agent.ask(`Here's your directions! It's a ${res.json.routes[0].legs[0].duration.text} drive to the nearest Loblaws.`);
       agent.ask(new BasicCard({
         title: `Directions to Loblaws`,
-        //subtitle: `It should take about 10 minutes.`,
-        //image: {
-        //  url: 'https://developers.google.com/actions/images/badges/XPM_BADGING_GoogleAssistant_VER.png',
-        //  accessibilityText: 'Directions to Loblaws',
-        //},
+        subtitle: `Car trip: ${res.json.routes[0].legs[0].duration.text}, ${res.json.routes[0].legs[0].distance.text}`,
+        image: {
+          url: 'https://maps.googleapis.com/maps/api/staticmap?size=600x300&maptype=roadmap&markers=color:red%7C'+origincoords+'&markers=color:green%7C'+destcoords+'&key='+process.env.GMAPS_API_KEY,
+          accessibilityText: 'Directions to Loblaws',
+        },
         buttons: [{
           title: 'View on Google Maps',
-          openUrlAction: {url: 'https://www.google.ca/maps/dir/?api=1&origin=@'+coords+'&destination=Loblaws'},
+          openUrlAction: {url: 'https://www.google.ca/maps/dir/?api=1&origin='+origincoords+'&destination=%22Loblaws%22'},
         }],
       }));
     }).catch(err => {
