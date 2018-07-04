@@ -1,60 +1,60 @@
-// See https://github.com/dialogflow/dialogflow-fulfillment-nodejs
-// for Dialogflow fulfillment library docs, samples, and to report issues
+/*
+
+Basically my task is to do this:
+https://stackoverflow.com/questions/48620140/use-the-google-navigation-card-in-my-dialogflow-agent
+https://dialogflow.com/docs/fulfillment
+https://developers.google.com/maps/documentation/javascript/directions
+
+https://medium.com/google-developer-experts/handling-permissions-with-dialogflow-and-actions-on-google-b08c8f228c00
+sample code is good
+
+*/
+
+
 'use strict';
 
-const express = require('express');
-const app = express();
-const bodyParser = require('body-parser');
-app.use(bodyParser.json());
+const functions = require('firebase-functions');
+const {Permission, dialogflow, Suggestions, BasicCard} = require('actions-on-google');
 
-const {WebhookClient} = require('dialogflow-fulfillment');
-const {Card, Suggestion} = require('dialogflow-fulfillment');
+const app = dialogflow({debug: true});
 
-// process.env.DEBUG = 'dialogflow:debug'; // enables lib debugging statements
-
-app.post('/conversation', (request, response) => {
-  const agent = new WebhookClient({ request, response });
-  console.log('Dialogflow Request headers: ' + JSON.stringify(request.headers));
-  console.log('Dialogflow Request body: ' + JSON.stringify(request.body));
-
-  function LocationHandler(agent) {
-    agent.add(`Here are directions to Loblaws:`);
-    agent.add(new Card({
-        title: `Title: this is a card title`,
-        imageUrl: 'https://developers.google.com/actions/images/badges/XPM_BADGING_GoogleAssistant_VER.png',
-        text: `This is the body text of a card.  You can even use line\n  breaks and emoji! 💁`,
-        buttonText: 'This is a button',
-        buttonUrl: 'https://assistant.google.com/'
-      })
-    );
-    agent.add(new Suggestion(`Quick Reply`));
-    agent.add(new Suggestion(`Suggestion`));
-    agent.setContext({ name: 'weather', lifespan: 2, parameters: { city: 'Rome' }});
-  }
-
-  function InStockHandler(agent) {
-    agent.add(`Got an in stock request `+ agent.parameters);
-    agent.add(new Suggestion(`Quick Reply`));
-    agent.add(new Suggestion(`Suggestion`));
-    agent.setContext({ name: 'weather', lifespan: 2, parameters: { city: 'Rome' }});
-  }
-
-  // // Uncomment and edit to make your own Google Assistant intent handler
-  // // uncomment `intentMap.set('your intent name here', googleAssistantHandler);`
-  // // below to get this function to be run when a Dialogflow intent is matched
-  // function googleAssistantHandler(agent) {
-  //   let conv = agent.conv(); // Get Actions on Google library conv instance
-  //   conv.ask('Hello from the Actions on Google client library!') // Use Actions on Google library
-  //   agent.add(conv); // Add Actions on Google library responses to your agent's response
-  // }
-  // // See https://github.com/dialogflow/dialogflow-fulfillment-nodejs/tree/master/samples/actions-on-google
-  // // for a complete Dialogflow fulfillment library Actions on Google client library v2 integration sample
-
-  // Run the proper function handler based on the matched Dialogflow intent name
-  let intentMap = new Map();
-  // intentMap.set('Default Welcome Intent', welcome);
-  // intentMap.set('Default Fallback Intent', fallback);
-  intentMap.set('Location', LocationHandler);
-  intentMap.set('InStock', InStockHandler);
-  agent.handleRequest(intentMap);
+app.intent('Default Welcome Intent', agent => {
+  agent.ask(`Hello! I'm your virtual Loblaws assistant. Ask me anything - for example, where's the nearest Loblaws?`);
+  agent.ask(new Suggestions([`Where's the nearest Loblaws?`, `Directions to Loblaws`]));
 });
+
+app.intent('Location', agent => {
+  agent.ask(new Permission({
+    context: `To find the nearest Loblaw's location to you`,
+    permissions: ['DEVICE_PRECISE_LOCATION'],
+  }));
+});
+
+app.intent('LocationGranted', (agent, params, granted) => {
+  if (granted && agent.device.location) {
+    const location = agent.device.location;
+    agent.ask(`You are at ${JSON.stringify(location)}`);
+    agent.ask(`Here are directions to Loblaws:`);
+    agent.ask(new BasicCard({
+      title: `Directions to Loblaws`,
+      subtitle: `It should take about 10 minutes.`,
+      image: {
+        url: 'https://developers.google.com/actions/images/badges/XPM_BADGING_GoogleAssistant_VER.png',
+        accessibilityText: 'Directions to Loblaws',
+      },
+      buttons: [{
+        title: 'View on Google Maps',
+        openUrlAction: {url: 'https://assistant.google.com/'},
+      }],
+    }));
+    // agent.setContext({ name: 'weather', lifespan: 2, parameters: { city: 'Rome' }});
+  } else {
+    agent.ask('Sorry, I could not figure out where you are.');
+  }
+});
+
+app.intent('InStock', agent => {
+  agent.ask(`Got an in stock request ${JSON.stringify(agent.parameters)}`);
+});
+
+exports.dialogflowFirebaseFulfillment = functions.https.onRequest(app);
