@@ -11,7 +11,7 @@
   },
   "main": "lib/index.js",
   "dependencies": {
-    "@google/maps": "^0.5.3",
+    "@google/maps": "https://github.com/cchan/google-maps-services-js/tarball/master",
     "actions-on-google": "^2.2.0",
     "dotenv-safe": "^6.0.0",
     "firebase-admin": "~5.12.1",
