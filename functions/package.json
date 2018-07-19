@@ -13,6 +13,7 @@
   "dependencies": {
     "@google/maps": "https://github.com/cchan/google-maps-services-js/tarball/master",
     "actions-on-google": "^2.2.0",
+    "dialogflow-fulfillment": "^0.4.1",
     "dotenv-safe": "^6.0.0",
     "firebase-admin": "~5.12.1",
     "firebase-functions": "^1.0.3"

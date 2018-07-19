@@ -22,31 +22,53 @@ https://firebase.google.com/docs/functions/get-started
 
 require('dotenv-safe').config();
 const functions = require('firebase-functions');
-const {Permission, dialogflow, Suggestions, BasicCard} = require('actions-on-google');
+const {WebhookClient, Suggestion, Card} = require('dialogflow-fulfillment');
+const {Permission} = require('actions-on-google');
 
 const gMaps = require('@google/maps').createClient({
   key: process.env.GMAPS_API_KEY,
   Promise: Promise
 });
 
-const app = dialogflow({debug: true});
 
-app.intent('Default Welcome Intent', agent => {
-  agent.ask(`Hello! I'm your virtual Loblaws assistant. Ask me anything - for example, where's the nearest Loblaws?`);
-  agent.ask(new Suggestions([`Where's the nearest Loblaws?`, `Directions to Loblaws`]));
+const intentMap = new Map();
+
+intentMap.set('Default Welcome Intent', agent => {
+  agent.add(`Hello! I'm your virtual Loblaws assistant. Ask me anything - for example, where's the nearest Loblaws?`);
+  agent.add(new Suggestion(`Where's the nearest Loblaws?`));
+  agent.add(new Suggestion(`Directions to Loblaws`));
 });
 
-app.intent('Location', agent => {
-  agent.ask(new Permission({
-    context: `To find the nearest Loblaw's location to you`,
-    permissions: ['DEVICE_PRECISE_LOCATION'],
-  }));
-  agent.ask(new Suggestions([`Yes`, `No`]));
+intentMap.set('Location', agent => {
+  if(agent.requestSource == agent.ACTIONS_ON_GOOGLE){
+    const conv = agent.conv();
+    conv.ask(new Permission({
+      context: `To find the nearest Loblaw's location to you`,
+      permissions: ['DEVICE_PRECISE_LOCATION'],
+    }));
+    agent.add(conv);
+    agent.add(new Suggestion("Yes"));
+    agent.add(new Suggestion("No"));
+  }
+  else {
+    agent.add("Not implemented");
+  }
 });
 
-app.intent('LocationGranted', (agent, params, granted) => {
-  if (granted && agent.device.location) {
-    const origincoords = agent.device.location.coordinates.latitude + ',' + agent.device.location.coordinates.longitude;
+intentMap.set('LocationGranted', (agent) => {
+  let origincoords = null;
+  if(agent.requestSource == agent.ACTIONS_ON_GOOGLE){
+    const conv = agent.conv();
+    if(conv.device.location) {
+      origincoords = conv.device.location.coordinates.latitude + ',' + conv.device.location.coordinates.longitude;
+    } else {
+      agent.add('Sorry, I could not figure out where you are.');
+    }
+  }
+  else{
+    agent.add('An error occurred.');
+  }
+  if(origincoords !== null)
     return gMaps.directions({
       origin: origincoords,
       destination: '\"Loblaws\"', // 'place_id:' + res.json.candidates[0].place_id
@@ -54,30 +76,26 @@ app.intent('LocationGranted', (agent, params, granted) => {
     }).asPromise()
     .then(res => {
       const destcoords = res.json.routes[0].legs[0].end_location.lat + ',' + res.json.routes[0].legs[0].end_location.lng;
-      agent.ask(`Here's your directions! It's a ${res.json.routes[0].legs[0].duration.text} drive to the nearest Loblaws.`);
-      agent.ask(new BasicCard({
+      agent.add(`Here's your directions! It's a ${res.json.routes[0].legs[0].duration.text} drive to the nearest Loblaws.`);
+      agent.add(new Card({
         title: `Directions to Loblaws`,
-        subtitle: `Car trip: ${res.json.routes[0].legs[0].duration.text}, ${res.json.routes[0].legs[0].distance.text}`,
-        image: {
-          url: 'https://maps.googleapis.com/maps/api/staticmap?size=600x300&maptype=roadmap&markers=color:red%7C'+origincoords+'&markers=color:green%7C'+destcoords+'&key='+process.env.GMAPS_API_KEY,
-          accessibilityText: 'Directions to Loblaws',
-        },
-        buttons: [{
-          title: 'View on Google Maps',
-          openUrlAction: {url: 'https://www.google.ca/maps/dir/?api=1&origin='+origincoords+'&destination=%22Loblaws%22'},
-        }],
+        imageUrl: 'https://maps.googleapis.com/maps/api/staticmap?size=600x300&maptype=roadmap&markers=color:red%7C'+origincoords+'&markers=color:green%7C'+destcoords+'&key='+process.env.GMAPS_API_KEY,
+        text: `Car trip: ${res.json.routes[0].legs[0].duration.text}, ${res.json.routes[0].legs[0].distance.text}`,
+        buttonText: 'View on Google Maps',
+        buttonUrl: 'https://www.google.ca/maps/dir/?api=1&origin='+origincoords+'&destination=%22Loblaws%22',
       }));
     }).catch(err => {
-      agent.ask("An error occurred: " + JSON.stringify(err));
+      agent.add("An error occurred: " + JSON.stringify(err));
     });
-    // agent.setContext({ name: 'weather', lifespan: 2, parameters: { city: 'Rome' }});
-  } else {
-    agent.ask('Sorry, I could not figure out where you are.');
-  }
 });
 
-app.intent('InStock', agent => {
-  agent.ask(`Got an in stock request ${JSON.stringify(agent.parameters)}`);
+intentMap.set('InStock', agent => {
+  agent.add(`Got an in stock request ${JSON.stringify(agent.parameters)}`);
 });
 
-export const dialogflowFirebaseFulfillment = functions.https.onRequest(app);
+export const dialogflowFirebaseFulfillment = functions.https.onRequest((request, response) => {
+  const agent = new WebhookClient({ request, response });
+  console.log('Dialogflow Request headers: ' + JSON.stringify(request.headers));
+  console.log('Dialogflow Request body: ' + JSON.stringify(request.body));
+  agent.handleRequest(intentMap);
+});
