@@ -32,23 +32,6 @@ intentMap.set('Default Welcome Intent', agent => {
     agent.add(`Hello! I'm your virtual Loblaws assistant. Ask me anything - for example, where's the nearest Zehr's?`); // Bonjour! Je suis votre assistant virtuel Loblaws. Demandez-moi quelque chose - par exemple, où est le Loblaws le plus proche?
     agent.add(new Suggestion(`Where's the nearest Zehr's?`)); // Où est le Loblaws le plus proche?
 });
-intentMap.set('Default Fallback Intent', agent => {
-    const responses = [
-        "I didn't get that. Can you say it again?",
-        "I missed what you said. Say it again?",
-        "Sorry, could you say that again?",
-        "Sorry, can you say that again?",
-        "Can you say that again?",
-        "Sorry, I didn't get that.",
-        "Sorry, what was that?",
-        "One more time?",
-        "What was that?",
-        "Say that again?",
-        "I didn't get that.",
-        "I missed that.",
-    ];
-    agent.add(responses[Math.floor(Math.random() * responses.length)]);
-});
 intentMap.set('Location', agent => {
     agent.setContext({
         name: "storename",
@@ -61,7 +44,9 @@ intentMap.set('Location', agent => {
             context: `To find the ${agent.parameters.LoblawsStoreName} nearest you`,
             permissions: ['DEVICE_PRECISE_LOCATION'],
         }));
-        agent.add(conv).add(new Suggestion("Yes")).add(new Suggestion("No"));
+        agent.add(conv);
+        agent.add(new Suggestion("Yes"));
+        agent.add(new Suggestion("No"));
     }
     else if (agent.requestSource == agent.FACEBOOK) {
         agent.add(new Payload(agent.FACEBOOK, {
@@ -85,14 +70,13 @@ intentMap.set('LocationGranted', agent => {
         }
     }
     else if (agent.requestSource == agent.FACEBOOK) {
-        let latlong = agent.getContext('facebook_location');
+        let latlong = agent.getContext("facebook_location").parameters;
         origincoords = latlong.lat + ',' + latlong.long;
     }
     else {
         agent.add('An error occurred.');
     }
-    console.log("CONTEXTS INCOMING:", agent.contexts);
-    let storename = agent.getContext("storename").storename;
+    let storename = agent.getContext("storename").parameters.storename;
     agent.setContext({ name: 'storename', lifespan: 0 });
     if (origincoords !== null)
         return gMaps.directions({
@@ -121,10 +105,6 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
     const agent = new WebhookClient({ request, response });
     console.log('Dialogflow Request headers: ' + JSON.stringify(request.headers));
     console.log('Dialogflow Request body: ' + JSON.stringify(request.body));
-    console.log("!!!", JSON.stringify(agent.originalRequest));
-    if (agent.getContext('facebook_location'))
-        agent.handleRequest(intentMap.get('LocationGranted'));
-    else
-        agent.handleRequest(intentMap);
+    agent.handleRequest(intentMap);
 });
 //# sourceMappingURL=index.js.map
